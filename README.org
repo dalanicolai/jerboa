@@ -1,0 +1,153 @@
+* Jerboa
+
+#+NAME: Stay out of reach!
+[[./jerboa_logo_small.png]]
+
+
+*Keyboard shortcut focused, universal bookmarks for your favorite editor*
+
+** Rationale 
+I prefer 'evil marks' (keyboard shortcuts) over Emacs bookmars
+(completing-read), and I always think I should use them more to
+quickly jump between buffers, layouts and projects. I imagine that the
+number of marks can grow a little wild, so that it is nice to use
+which-key guidance when invoking, but also when adding (to see which
+bindings are free and taken).
+
+Jerboa is meant to replace and enhance the 'evil mark' functionality
+(but can be used by non-evil users also). The bookmarks are designed
+to be more universal, handlers can be added so that, besides buffer
+locations, also window configurations, and potentially projects can be
+marked (just implement the handler).
+
+To save time, most of the package code and this README have been
+created with (the help of) AI. (code -> Gemini, image -> ChatGPT)
+
+*I did not check/test all of the code, nor the README. Only some small parts*
+
+I am not sure when I will find time for this. Also, I know many small
+(or big) improvements can be made. The package is mostly a serious
+(and useful) sketch. You are welcome to contribute 🙏
+
+** Features
+
+- Visual Key Reading :: Uses 'which-key' to show current bindings while you are typing a new key sequence.
+- Hierarchical Maps :: Easily create nested prefix maps. For example structure per project (e.g. different layouts), or per bookmark type etc.
+- Persistence :: Automatically saves your bindings to a file ('jerboa-maps') and loads them on startup.
+- Extensible Handlers :: Define custom actions for binding keys via the 'jerboa-handlers' mechanism (tab-bar handler is included)
+- Only uses built-in Emacs packages :: only uses the which-key, bookmarks, tab-bar (and desktop) packages.
+
+** Installation
+
+*if not on emacs > 30, then manually install which-key*
+
+add the following code to your init file
+
+#+begin_src elisp
+(package-vc-install
+   '(jerboa
+     :vc-backend Git
+     :url "https://github.com/dalanicolai/jerboa.git"
+     :branch "master"))
+#+end_src
+
+** Suggested Keybindings
+
+Jerboa is designed to replace 'evil-bookmark' (marks) or standard Emacs bookmark commands.
+
+*** Evil Mode
+#+begin_src elisp
+;; Bind keys (create bookmark)
+(evil-global-set-key 'motion "m" 'jerboa-bind)
+
+;; Jump to bookmark (invokes the jerboa keymap)
+(evil-global-set-key 'motion "'" jerboa-map)
+
+;; Unbind keys
+(evil-global-set-key 'motion "M" 'jerboa-unbind)
+#+end_src
+
+*** Standard Emacs
+#+begin_src elisp
+;; Bind keys
+(global-set-key (kbd "C-x r m") 'jerboa-bind)
+
+;; Jump to bookmark
+(global-set-key (kbd "C-x r b") jerboa-map)
+
+;; Unbind keys
+(global-set-key (kbd "C-x r M") 'jerboa-unbind)
+#+end_src
+
+** Usage
+
+*** 1. Creating a Bookmark
+Call 'jerboa-bind' (='= is suggested for evil-user).
+- Jerboa will prompt you for a key sequence.
+- As you type (e.g., =w=), 'which-key' shows existing bindings.
+- If you type a new key (e.g., =w o=), Jerboa creates a bookmark at the current location and binds it to =w o=.
+
+*** 2. Creating Prefixes and Tabs
+- Call 'jerboa-bind' with a prefix argument (=C-u= or =SPC u= in evil).
+Jerboa will prompt you to select a *Handler*:
+
+- Define Prefix :: Creates a new nested keymap. Use this to organize bookmarks (e.g., create a 'work' prefix).
+- Define Tab :: Renames the current tab and binds a key to switch to it. This is useful for persistent workspace switching.
+- **Note** :: If 'desktop-save-mode' is not active, Jerboa will prompt to enable it to ensure tabs persist across sessions.
+
+*** 3. Jumping
+- Bind 'jerboa-map' to your favorite key-binding (='= is suggested for evil-user)
+- Type the key sequence of your bookmark. 'which-key' will guide you.
+
+*** 4. Unbinding
+- Call 'jerboa-unbind' (=M= is suggested for evil users)
+- Select the binding you want to remove from the completion list.
+- If the binding is a bookmark or tab created by Jerboa, the underlying bookmark/tab reference is also cleaned up.
+
+** Custom Handlers and Persistence
+
+You can extend Jerboa by adding new handlers to 'jerboa-handlers'. A handler is a function that takes a 'keys' argument (the key sequence entered by the user).
+
+To ensure your custom bindings are *saved and restored* across sessions, you must also provide a *Serializer* and a *Loader*.
+
+*** 1. Define the Handler
+#+begin_src elisp
+(defun my-jerboa-command-handler (keys)
+  (let ((cmd (read-command "Command to bind: ")))
+    (define-key jerboa-map keys cmd)
+    (message "Bound %s to %s" (key-description keys) cmd)))
+
+(add-to-list 'jerboa-handlers '("Bind Command" . my-jerboa-command-handler))
+#+end_src
+
+*** 2. Define a Serializer
+A serializer checks if a binding should be saved and returns a property list describing it. Add it to 'jerboa-serializers'.
+
+#+begin_src elisp
+(defun my-command-serializer (binding keys)
+  ;; Check if this binding was created by our handler (e.g. check symbol name or properties)
+  ;; For this example, let's assume we only save commands starting with "my-cmd-"
+  (when (and (symbolp binding) (string-prefix-p "my-cmd-" (symbol-name binding)))
+    (list :type :my-command :keys keys :name (symbol-name binding))))
+
+(add-to-list 'jerboa-serializers 'my-command-serializer)
+#+end_src
+
+*** 3. Define a Loader
+A loader restores the binding from the saved property list. Add it to 'jerboa-loaders'.
+
+#+begin_src elisp
+(defun my-command-restorer (keys spec)
+  (let ((name (plist-get spec :name)))
+    (define-key jerboa-map keys (intern name))))
+
+(add-to-list 'jerboa-loaders '(:my-command . my-command-restorer))
+#+end_src
+
+** Configuration
+
+- jerboa-file :: The file where binding profiles are saved. Defaults to =jerboa-maps= in your user Emacs directory.
+
+** Note on which-key integration
+
+This package implements 'jerboa-read-key-sequence', which allows reading keys while updating a 'which-key' popup. This generic functionality is not specific to bookmarks and could potentially be moved into 'which-key.el' itself (e.g., as 'which-key-read-key-sequence') to allow visual feedback for commands like 'global-set-key'.
